@@ -246,16 +246,16 @@ const Approvals = () => {
                                     <ListItemText
                                       primary={`Step ${approval.level}: ${approval.stepName || 'Approval'}`}
                                       secondary={
-                                        <Box>
-                                          <Typography variant="caption" color={status.color}>
+                                        <span>
+                                          <Typography variant="caption" color={status.color} component="span">
                                             {status.text}
                                           </Typography>
                                           {approval.comments && (
-                                            <Typography variant="caption" display="block">
+                                            <Typography variant="caption" component="div">
                                               {approval.comments}
                                             </Typography>
                                           )}
-                                        </Box>
+                                        </span>
                                       }
                                     />
                                   </ListItem>

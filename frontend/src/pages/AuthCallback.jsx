@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import { useAuth } from '../contexts/AuthContext';
 
 const AuthCallback = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const { setToken, setUser } = useAuth();
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -23,8 +25,10 @@ const AuthCallback = () => {
         // If user data is provided, user already exists
         if (userData) {
           console.log('✅ Existing user logged in, redirecting to dashboard');
-          // Store token in localStorage
+          // Store token in localStorage and update context
           localStorage.setItem('token', token);
+          setToken(token);
+          setUser(JSON.parse(userData));
           navigate('/dashboard');
           return;
         }

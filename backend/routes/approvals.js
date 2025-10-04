@@ -12,12 +12,56 @@ router.get('/pending', authenticateToken, requireRole('manager', 'admin'), async
   try {
     const { page = 1, limit = 10 } = req.query;
 
-    // Find expenses where current user is in the approval chain
+    // Find expenses where current user is the NEXT approver in sequence
+    // This ensures sequential workflow: only the next approver can see the expense
     const query = {
       company: req.user.company._id,
       status: 'submitted',
-      'approvalChain.approver': req.user._id,
-      'approvalChain.status': 'pending'
+      $expr: {
+        $let: {
+          vars: {
+            userApproval: {
+              $arrayElemAt: [
+                {
+                  $filter: {
+                    input: '$approvalChain',
+                    cond: {
+                      $and: [
+                        { $eq: ['$$this.approver', req.user._id] },
+                        { $eq: ['$$this.status', 'pending'] }
+                      ]
+                    }
+                  }
+                },
+                0
+              ]
+            }
+          },
+          in: {
+            $and: [
+              { $ne: ['$$userApproval', null] },
+              {
+                $eq: [
+                  '$$userApproval.level',
+                  {
+                    $min: {
+                      $map: {
+                        input: {
+                          $filter: {
+                            input: '$approvalChain',
+                            cond: { $eq: ['$$this.status', 'pending'] }
+                          }
+                        },
+                        in: '$$this.level'
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
     };
 
     const expenses = await Expense.find(query)
@@ -99,11 +143,55 @@ router.post('/:expenseId/approve',
       const { expenseId } = req.params;
       const { comments } = req.body;
 
+      // Find expense where current user is the NEXT approver in sequence
       const expense = await Expense.findOne({
         _id: expenseId,
         company: req.user.company._id,
-        'approvalChain.approver': req.user._id,
-        'approvalChain.status': 'pending'
+        $expr: {
+          $let: {
+            vars: {
+              userApproval: {
+                $arrayElemAt: [
+                  {
+                    $filter: {
+                      input: '$approvalChain',
+                      cond: {
+                        $and: [
+                          { $eq: ['$$this.approver', req.user._id] },
+                          { $eq: ['$$this.status', 'pending'] }
+                        ]
+                      }
+                    }
+                  },
+                  0
+                ]
+              }
+            },
+            in: {
+              $and: [
+                { $ne: ['$$userApproval', null] },
+                {
+                  $eq: [
+                    '$$userApproval.level',
+                    {
+                      $min: {
+                        $map: {
+                          input: {
+                            $filter: {
+                              input: '$approvalChain',
+                              cond: { $eq: ['$$this.status', 'pending'] }
+                            }
+                          },
+                          in: '$$this.level'
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        }
       });
 
       if (!expense) {
@@ -125,20 +213,52 @@ router.post('/:expenseId/approve',
       expense.approvalChain[approvalIndex].actionDate = new Date();
 
       // Check if all required approvals are complete
+      const allRequiredApprovals = expense.approvalChain.filter(
+        approval => approval.isRequired === true || approval.isRequired === 'true'
+      );
+      
       const pendingRequiredApprovals = expense.approvalChain.filter(
-        approval => approval.status === 'pending' && approval.isRequired
+        approval => approval.status === 'pending' && (approval.isRequired === true || approval.isRequired === 'true') && approval.approver
+      );
+      
+      const completedRequiredApprovals = expense.approvalChain.filter(
+        approval => approval.status === 'approved' && (approval.isRequired === true || approval.isRequired === 'true')
       );
 
       console.log('🔍 Approval progression check:', {
         expenseId: expense._id,
         totalApprovals: expense.approvalChain.length,
+        requiredApprovals: allRequiredApprovals.length,
+        completedRequired: completedRequiredApprovals.length,
         pendingRequired: pendingRequiredApprovals.length,
         approvalChain: expense.approvalChain.map(a => ({
-          approver: a.approver.toString(),
+          approver: a.approver ? a.approver.toString() : 'null',
           level: a.level,
           status: a.status,
           isRequired: a.isRequired,
-          stepName: a.stepName
+          stepName: a.stepName || 'N/A'
+        }))
+      });
+
+      // Debug: Check the isRequired values more carefully
+      console.log('🔍 Detailed isRequired check:', {
+        allApprovals: expense.approvalChain.map(a => ({
+          level: a.level,
+          isRequired: a.isRequired,
+          isRequiredType: typeof a.isRequired,
+          isRequiredStrict: a.isRequired === true,
+          isRequiredString: a.isRequired === 'true',
+          status: a.status
+        })),
+        requiredApprovals: allRequiredApprovals.map(a => ({
+          level: a.level,
+          isRequired: a.isRequired,
+          status: a.status
+        })),
+        pendingRequired: pendingRequiredApprovals.map(a => ({
+          level: a.level,
+          isRequired: a.isRequired,
+          status: a.status
         }))
       });
 
@@ -154,8 +274,12 @@ router.post('/:expenseId/approve',
         
         // Send notification to next approvers
         try {
+          const nextApproverIds = pendingRequiredApprovals
+            .map(a => a.approver)
+            .filter(id => id !== null);
+          
           const nextApprovers = await User.find({
-            _id: { $in: pendingRequiredApprovals.map(a => a.approver) },
+            _id: { $in: nextApproverIds },
             isActive: true
           });
 

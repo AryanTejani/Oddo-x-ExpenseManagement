@@ -76,6 +76,20 @@ const expenseSchema = new mongoose.Schema({
       enum: ['pending', 'approved', 'rejected'],
       default: 'pending'
     },
+    stepName: {
+      type: String
+    },
+    isRequired: {
+      type: Boolean,
+      default: false
+    },
+    isManagerApprover: {
+      type: Boolean,
+      default: false
+    },
+    rule: {
+      type: String
+    },
     comments: String,
     actionDate: Date,
     createdAt: {

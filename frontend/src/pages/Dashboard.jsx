@@ -40,6 +40,7 @@ const Dashboard = () => {
     pendingAmount: 0,
     approvedAmount: 0
   });
+  const [approvalStats, setApprovalStats] = useState(null);
   const [recentExpenses, setRecentExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,6 +59,7 @@ const Dashboard = () => {
       if (dashboardResponse.data) {
         // Use server-provided stats (already filtered by role)
         setStats(dashboardResponse.data.stats);
+        setApprovalStats(dashboardResponse.data.approvalStats || null);
         setRecentExpenses(dashboardResponse.data.recentExpenses || []);
       } else {
         console.warn('Unexpected dashboard API response format:', dashboardResponse.data);
@@ -183,6 +185,77 @@ const Dashboard = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Approval Statistics for Managers and Admins */}
+      {approvalStats && (user?.role === 'manager' || user?.role === 'admin') && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12}>
+            <Typography variant="h5" gutterBottom>
+              Your Approval Statistics
+            </Typography>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box display="flex" alignItems="center">
+                  <CheckCircleIcon color="primary" sx={{ mr: 2, fontSize: 40 }} />
+                  <Box>
+                    <Typography variant="h4">{approvalStats.totalApprovals}</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Total Approvals
+                    </Typography>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box display="flex" alignItems="center">
+                  <CheckCircleIcon color="success" sx={{ mr: 2, fontSize: 40 }} />
+                  <Box>
+                    <Typography variant="h4">{approvalStats.approvedCount}</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Approved
+                    </Typography>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box display="flex" alignItems="center">
+                  <PendingIcon color="warning" sx={{ mr: 2, fontSize: 40 }} />
+                  <Box>
+                    <Typography variant="h4">{approvalStats.pendingCount}</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Pending
+                    </Typography>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Box display="flex" alignItems="center">
+                  <CheckCircleIcon color="error" sx={{ mr: 2, fontSize: 40 }} />
+                  <Box>
+                    <Typography variant="h4">{approvalStats.rejectedCount}</Typography>
+                    <Typography variant="body2" color="textSecondary">
+                      Rejected
+                    </Typography>
+                  </Box>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
 
       <Grid container spacing={3}>
         {/* Recent Expenses */}

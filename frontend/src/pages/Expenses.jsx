@@ -185,9 +185,10 @@ const Expenses = () => {
   };
 
   const filteredExpenses = expenses.filter(expense => {
+    if (!expense) return false; // Add null check
     const matchesSearch = !searchTerm || 
-      expense.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.category?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       expense.merchant?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = !filterStatus || expense.status === filterStatus;
     return matchesSearch && matchesStatus;
@@ -291,7 +292,7 @@ const Expenses = () => {
                 Pending
               </Typography>
               <Typography variant="h4" color="warning.main">
-                {filteredExpenses.filter(e => e.status === 'submitted').length}
+                {filteredExpenses.filter(e => e && e.status === 'submitted').length}
               </Typography>
             </CardContent>
           </Card>
@@ -304,7 +305,7 @@ const Expenses = () => {
                 Approved
               </Typography>
               <Typography variant="h4" color="success.main">
-                {filteredExpenses.filter(e => e.status === 'approved').length}
+                {filteredExpenses.filter(e => e && e.status === 'approved').length}
               </Typography>
             </CardContent>
           </Card>

@@ -587,6 +587,7 @@ router.post('/ocr-draft',
 // Get dashboard data with role-based filtering
 router.get('/dashboard', authenticateToken, requireCompany, async (req, res) => {
   try {
+    console.log('📊 Dashboard request from user:', req.user._id, 'role:', req.user.role);
     const query = { company: req.user.company._id };
 
     // Role-based filtering
@@ -648,6 +649,30 @@ router.get('/dashboard', authenticateToken, requireCompany, async (req, res) => 
       }
     });
 
+    // Add approval statistics for managers and admins
+    let approvalStats = null;
+    if (req.user.role === 'manager' || req.user.role === 'admin') {
+      // Get approval statistics
+      const approvalStatsData = await Expense.aggregate([
+        { $match: { company: req.user.company._id } },
+        { $unwind: '$approvalChain' },
+        { $match: { 'approvalChain.approver': req.user._id } },
+        {
+          $group: {
+            _id: '$approvalChain.status',
+            count: { $sum: 1 }
+          }
+        }
+      ]);
+
+      approvalStats = {
+        totalApprovals: approvalStatsData.reduce((sum, stat) => sum + stat.count, 0),
+        approvedCount: approvalStatsData.find(s => s._id === 'approved')?.count || 0,
+        pendingCount: approvalStatsData.find(s => s._id === 'pending')?.count || 0,
+        rejectedCount: approvalStatsData.find(s => s._id === 'rejected')?.count || 0
+      };
+    }
+
     res.json({
       stats: {
         totalExpenses,
@@ -658,7 +683,8 @@ router.get('/dashboard', authenticateToken, requireCompany, async (req, res) => 
         pendingAmount,
         approvedAmount
       },
-      recentExpenses
+      recentExpenses,
+      approvalStats
     });
   } catch (error) {
     console.error('Get dashboard data error:', error);

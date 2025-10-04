@@ -152,21 +152,50 @@ class ApprovalWorkflowService {
       // Use approval sequence if available (Odoo-style multi-level)
       if (workflow.approvalSequence && workflow.approvalSequence.length > 0) {
         console.log('🔄 Using approval sequence workflow');
+        console.log('📋 Workflow steps:', workflow.approvalSequence.map(s => ({
+          step: s.step,
+          name: s.name,
+          isRequired: s.isRequired,
+          isManagerApprover: s.isManagerApprover,
+          approvers: s.approvers?.length || 0
+        })));
+        
         for (const sequenceStep of workflow.approvalSequence.sort((a, b) => a.step - b.step)) {
           console.log(`📋 Processing step ${sequenceStep.step}: ${sequenceStep.name}`);
+          console.log(`   isRequired: ${sequenceStep.isRequired} (type: ${typeof sequenceStep.isRequired})`);
+          console.log(`   isManagerApprover: ${sequenceStep.isManagerApprover}`);
+          console.log(`   specific approvers: ${sequenceStep.approvers?.length || 0}`);
+          
           const approvers = await this.getApproversForSequenceStep(sequenceStep, expense);
           console.log(`👥 Found ${approvers.length} approvers for step ${sequenceStep.step}`);
           
-          for (const approver of approvers) {
+          if (approvers.length === 0) {
+            console.warn(`⚠️ No approvers found for step ${sequenceStep.step}: ${sequenceStep.name}`);
+            // Still add the step to the chain even if no approvers found
+            // This ensures the step progression logic works correctly
             approvalChain.push({
+              approver: null, // No approver found
+              level: sequenceStep.step,
+              stepName: sequenceStep.name,
+              status: 'pending',
+              isRequired: sequenceStep.isRequired === true,
+              isManagerApprover: sequenceStep.isManagerApprover === true,
+              rule: 'approval_sequence'
+            });
+          } else {
+            for (const approver of approvers) {
+            const approvalEntry = {
               approver: approver._id,
               level: sequenceStep.step,
               stepName: sequenceStep.name,
               status: 'pending',
-              isRequired: sequenceStep.isRequired,
-              isManagerApprover: sequenceStep.isManagerApprover,
+              isRequired: sequenceStep.isRequired === true,
+              isManagerApprover: sequenceStep.isManagerApprover === true,
               rule: 'approval_sequence'
-            });
+            };
+            console.log(`🔗 Adding approval entry:`, approvalEntry);
+            approvalChain.push(approvalEntry);
+            }
           }
         }
       } else {
@@ -182,8 +211,8 @@ class ApprovalWorkflowService {
                 approver: approvers[0]._id,
                 level: rule.level,
                 status: 'pending',
-                isRequired: rule.isRequired,
-                isManagerApprover: rule.isManagerApprover,
+                isRequired: rule.isRequired === true,
+                isManagerApprover: rule.isManagerApprover === true,
                 rule: rule.condition
               });
               processedLevels.add(rule.level);
@@ -205,7 +234,8 @@ class ApprovalWorkflowService {
               level: i + 1,
               status: 'pending',
               isRequired: true,
-              isManagerApprover: false
+              isManagerApprover: false,
+              rule: 'default_approver'
             });
           }
         }
@@ -215,12 +245,41 @@ class ApprovalWorkflowService {
       approvalChain.sort((a, b) => a.level - b.level);
 
       console.log('🔗 Final approval chain:', approvalChain.map(a => ({
-        approver: a.approver.toString(),
+        approver: a.approver ? a.approver.toString() : 'null',
         level: a.level,
         stepName: a.stepName,
         status: a.status,
-        isRequired: a.isRequired
+        isRequired: a.isRequired,
+        isManagerApprover: a.isManagerApprover,
+        rule: a.rule
       })));
+
+      // Debug: Check required approvals
+      const requiredApprovals = approvalChain.filter(a => a.isRequired === true);
+      console.log('🔍 Required approvals count:', requiredApprovals.length);
+      console.log('🔍 Required approvals details:', requiredApprovals.map(a => ({
+        level: a.level,
+        stepName: a.stepName,
+        isRequired: a.isRequired,
+        status: a.status
+      })));
+
+      // Validate that all required steps have approvers
+      const requiredSteps = workflow.approvalSequence.filter(step => step.isRequired);
+      const stepsWithApprovers = approvalChain.filter(a => a.isRequired);
+      
+      console.log('🔍 Validation:', {
+        totalWorkflowSteps: workflow.approvalSequence.length,
+        requiredSteps: requiredSteps.length,
+        stepsWithApprovers: stepsWithApprovers.length,
+        missingSteps: requiredSteps.length - stepsWithApprovers.length
+      });
+
+      if (stepsWithApprovers.length !== requiredSteps.length) {
+        console.warn('⚠️ Some required steps are missing approvers!');
+        console.log('Required steps:', requiredSteps.map(s => ({ step: s.step, name: s.name, isRequired: s.isRequired })));
+        console.log('Steps with approvers:', stepsWithApprovers.map(s => ({ level: s.level, stepName: s.stepName, isRequired: s.isRequired })));
+      }
 
       return approvalChain;
     } catch (error) {

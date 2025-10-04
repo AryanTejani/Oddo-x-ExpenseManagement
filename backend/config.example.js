@@ -24,11 +24,9 @@ module.exports = {
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY || 'your-cloudinary-api-key',
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET || 'your-cloudinary-api-secret',
 
-  // Email Configuration (Nodemailer)
-  EMAIL_SERVICE: process.env.EMAIL_SERVICE || 'gmail', // gmail, outlook, yahoo, etc.
+  // Email Configuration (Simple Gmail Setup)
   EMAIL_USER: process.env.EMAIL_USER || 'your-email@gmail.com',
-  EMAIL_PASS: process.env.EMAIL_PASS || 'your-app-password',
-  EMAIL_FROM: process.env.EMAIL_FROM || 'noreply@expensemanager.com',
+  EMAIL_PASSWORD: process.env.EMAIL_PASSWORD || 'your-app-password',
   
   // Development Email (Ethereal Email for testing)
   ETHEREAL_USER: process.env.ETHEREAL_USER || 'ethereal.user@ethereal.email',
