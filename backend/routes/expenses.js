@@ -145,12 +145,16 @@ router.post('/',
   ],
   async (req, res) => {
     try {
+      console.log('🔧 Expense creation request:', req.body);
+      console.log('👤 User:', req.user ? 'Authenticated' : 'Not authenticated');
+      
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
+        console.log('❌ Validation errors:', errors.array());
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { amount, currency, category, description, date, tags } = req.body;
+      const { amount, currency, category, description, date, merchant, tags } = req.body;
 
       const expense = new Expense({
         employee: req.user._id,
@@ -160,6 +164,7 @@ router.post('/',
         category,
         description,
         date: new Date(date),
+        merchant: merchant || '',
         tags: tags || []
       });
 
@@ -345,10 +350,13 @@ router.post('/:expenseId/submit', authenticateToken, requireRole('employee'), as
     await expense.save();
 
     // Send email notification to approvers
-    if (manager) {
+    if (approvalChain && approvalChain.length > 0) {
       try {
-        await emailService.sendExpenseSubmittedEmail(expense, expense.employee, [manager]);
-        console.log('Expense submission notification sent');
+        const approvers = approvalChain.map(app => app.approver).filter(app => app);
+        if (approvers.length > 0) {
+          await emailService.sendExpenseSubmittedEmail(expense, expense.employee, approvers);
+          console.log('Expense submission notification sent');
+        }
       } catch (emailError) {
         console.error('Failed to send expense submission email:', emailError);
         // Don't fail the request if email fails
@@ -454,6 +462,177 @@ router.get('/team/expenses', authenticateToken, requireRole('manager'), async (r
   }
 });
 
+// Process receipt with OCR and create draft expense
+router.post('/ocr-process',
+  authenticateToken,
+  requireRole('employee'),
+  upload.single('receipt'),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+      }
+
+      // Process receipt with OCR
+      const ocrResult = await ocrService.processReceipt(req.file.buffer, req.file.mimetype);
+      
+      if (!ocrResult.success) {
+        return res.status(400).json({ 
+          message: 'Failed to process receipt',
+          error: ocrResult.error 
+        });
+      }
+
+      res.json({
+        success: true,
+        data: ocrResult.data
+      });
+    } catch (error) {
+      console.error('OCR processing error:', error);
+      res.status(500).json({ message: 'Failed to process receipt' });
+    }
+  }
+);
+
+// Create draft expense from OCR data
+router.post('/ocr-draft',
+  authenticateToken,
+  requireRole('employee'),
+  [
+    body('amount').isNumeric().isFloat({ min: 0 }),
+    body('currency.code').isLength({ min: 3, max: 3 }),
+    body('category').optional().isIn([
+      'travel', 'meals', 'accommodation', 'transport', 
+      'office_supplies', 'entertainment', 'training', 
+      'communication', 'other'
+    ]),
+    body('description').trim().isLength({ min: 1, max: 500 }),
+    body('date').optional().isISO8601(),
+    body('ocrData').optional().isObject()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ errors: errors.array() });
+      }
+
+      const { amount, currency, category, description, date, merchant, tags, ocrData } = req.body;
+
+      const expense = new Expense({
+        employee: req.user._id,
+        company: req.user.company._id,
+        amount,
+        currency,
+        category: category || 'other',
+        description,
+        date: date ? new Date(date) : new Date(),
+        merchant: merchant || '',
+        tags: tags || [],
+        status: 'draft',
+        receipt: {
+          pendingOCRData: ocrData || null
+        }
+      });
+
+      await expense.save();
+
+      const populatedExpense = await Expense.findById(expense._id)
+        .populate('employee', 'firstName lastName email department');
+
+      res.status(201).json({
+        message: 'Draft expense created successfully',
+        expense: populatedExpense
+      });
+    } catch (error) {
+      console.error('Create draft expense error:', error);
+      res.status(500).json({ message: 'Failed to create draft expense' });
+    }
+  }
+);
+
+// Get dashboard data with role-based filtering
+router.get('/dashboard', authenticateToken, requireCompany, async (req, res) => {
+  try {
+    const query = { company: req.user.company._id };
+
+    // Role-based filtering
+    if (req.user.role === 'employee') {
+      query.employee = req.user._id;
+    } else if (req.user.role === 'manager') {
+      // Managers can see their team's expenses
+      const teamMembers = await User.find({ 
+        $or: [
+          { manager: req.user._id },
+          { _id: req.user._id }
+        ],
+        isActive: true
+      }).select('_id');
+      
+      query.employee = { $in: teamMembers.map(member => member._id) };
+    }
+    // Admins can see all expenses (no additional filtering)
+
+    // Get recent expenses (last 5)
+    const recentExpenses = await Expense.find(query)
+      .populate('employee', 'firstName lastName email department')
+      .sort({ createdAt: -1 })
+      .limit(5);
+
+    // Get statistics
+    const stats = await Expense.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 },
+          totalAmount: { $sum: '$amount' }
+        }
+      }
+    ]);
+
+    // Calculate total stats
+    let totalExpenses = 0;
+    let pendingExpenses = 0;
+    let approvedExpenses = 0;
+    let rejectedExpenses = 0;
+    let totalAmount = 0;
+    let pendingAmount = 0;
+    let approvedAmount = 0;
+
+    stats.forEach(stat => {
+      totalExpenses += stat.count;
+      totalAmount += stat.totalAmount;
+      
+      if (stat._id === 'submitted') {
+        pendingExpenses = stat.count;
+        pendingAmount = stat.totalAmount;
+      } else if (stat._id === 'approved') {
+        approvedExpenses = stat.count;
+        approvedAmount = stat.totalAmount;
+      } else if (stat._id === 'rejected') {
+        rejectedExpenses = stat.count;
+      }
+    });
+
+    res.json({
+      stats: {
+        totalExpenses,
+        pendingExpenses,
+        approvedExpenses,
+        rejectedExpenses,
+        totalAmount,
+        pendingAmount,
+        approvedAmount
+      },
+      recentExpenses
+    });
+  } catch (error) {
+    console.error('Get dashboard data error:', error);
+    res.status(500).json({ message: 'Failed to get dashboard data' });
+  }
+});
+
 // Get my expenses (Employee role)
 router.get('/my/expenses', authenticateToken, requireRole('employee'), async (req, res) => {
   try {
@@ -486,7 +665,7 @@ router.get('/my/expenses', authenticateToken, requireRole('employee'), async (re
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total,
+        total: total,
         pages: Math.ceil(total / limit)
       }
     });

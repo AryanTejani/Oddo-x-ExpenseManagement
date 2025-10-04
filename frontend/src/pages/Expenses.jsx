@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -18,7 +18,17 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Fab
+  Fab,
+  CircularProgress,
+  Alert,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -26,62 +36,92 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
   Visibility as ViewIcon,
-  Receipt as ReceiptIcon
+  Receipt as ReceiptIcon,
+  CloudUpload as UploadIcon,
+  AutoFixHigh as AutoFixHighIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
+import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'react-toastify';
+import axios from 'axios';
+import ReceiptUpload from '../components/ReceiptUpload';
 
 const Expenses = () => {
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedExpense, setSelectedExpense] = useState(null);
 
-  // Mock data - in real app, this would come from API
-  const expenses = [
-    {
-      id: 1,
-      description: 'Business lunch with client',
-      amount: 85.50,
-      currency: 'USD',
-      category: 'meals',
-      date: '2024-01-15',
-      status: 'approved',
-      receipt: true
-    },
-    {
-      id: 2,
-      description: 'Taxi to airport',
-      amount: 45.00,
-      currency: 'USD',
-      category: 'transport',
-      date: '2024-01-14',
-      status: 'pending',
-      receipt: false
-    },
-    {
-      id: 3,
-      description: 'Office supplies',
-      amount: 120.00,
-      currency: 'USD',
-      category: 'office_supplies',
-      date: '2024-01-13',
-      status: 'approved',
-      receipt: true
-    },
-    {
-      id: 4,
-      description: 'Hotel accommodation',
-      amount: 250.00,
-      currency: 'USD',
-      category: 'accommodation',
-      date: '2024-01-12',
-      status: 'rejected',
-      receipt: true
+  const [expenses, setExpenses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [receiptUploadOpen, setReceiptUploadOpen] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    loadExpenses();
+  }, []);
+
+  // Refresh expenses when component becomes visible
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadExpenses();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  const loadExpenses = async () => {
+    try {
+      setLoading(true);
+      console.log('🔄 Loading expenses...');
+      const response = await axios.get("/api/expenses");
+      
+      console.log('✅ API Response:', response.data);
+      
+      if (response.data && Array.isArray(response.data.expenses)) {
+        console.log('📊 Expenses loaded:', response.data.expenses.length, 'items');
+        setExpenses(response.data.expenses);
+      } else {
+        console.warn("⚠️ Unexpected API response format:", response.data);
+        setExpenses([]);
+      }
+    } catch (error) {
+      console.error("❌ Failed to load expenses:", error);
+      console.error("❌ Error response:", error.response?.data);
+      setExpenses([]);
+      const errorMessage = error.response?.data?.message || "Failed to load expenses";
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  const handleDeleteExpense = async (expenseId) => {
+    if (window.confirm("Are you sure you want to delete this expense?")) {
+      try {
+        await axios.delete(`/api/expenses/${expenseId}`);
+        toast.success("Expense deleted successfully");
+        loadExpenses();
+      } catch (error) {
+        console.error("Failed to delete expense:", error);
+        toast.error("Failed to delete expense");
+        handleMenuClose();
+      }
+    }
+  };
 
   const getStatusColor = (status) => {
     switch (status) {
       case 'approved': return 'success';
-      case 'pending': return 'warning';
+      case 'submitted': return 'warning';
+      case 'pending': return 'warning'; // Legacy support
       case 'rejected': return 'error';
       case 'draft': return 'default';
       default: return 'default';
@@ -130,11 +170,19 @@ const Expenses = () => {
 
   const handleDelete = () => {
     if (selectedExpense) {
-      // Handle delete
-      console.log('Delete expense:', selectedExpense.id);
+      handleDeleteExpense(selectedExpense._id);
+      handleMenuClose();
     }
-    handleMenuClose();
   };
+
+  const filteredExpenses = expenses.filter(expense => {
+    const matchesSearch = !searchTerm || 
+      expense.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      expense.merchant?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = !filterStatus || expense.status === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <Box>
@@ -142,14 +190,60 @@ const Expenses = () => {
         <Typography variant="h4" component="h1">
           My Expenses
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => navigate('/expenses/new')}
-        >
-          New Expense
-        </Button>
+        <Box display="flex" gap={1}>
+          <Button
+            variant="outlined"
+            startIcon={<UploadIcon />}
+            onClick={() => setReceiptUploadOpen(true)}
+          >
+            Smart Upload
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => navigate('/expenses/new')}
+          >
+            New Expense
+          </Button>
+        </Box>
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error}
+        </Alert>
+      )}
+
+      {/* Filters */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={6} md={4}>
+            <TextField
+              fullWidth
+              label="Search expenses"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by description, category, or merchant"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={4}>
+            <FormControl fullWidth>
+              <InputLabel>Filter by Status</InputLabel>
+              <Select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                label="Filter by Status"
+              >
+                <MenuItem value="">All Status</MenuItem>
+                <MenuItem value="draft">Draft</MenuItem>
+                <MenuItem value="submitted">Submitted</MenuItem>
+                <MenuItem value="approved">Approved</MenuItem>
+                <MenuItem value="rejected">Rejected</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+        </Grid>
+      </Paper>
 
       <Grid container spacing={3}>
         {/* Summary Cards */}
@@ -160,7 +254,7 @@ const Expenses = () => {
                 Total Expenses
               </Typography>
               <Typography variant="h4">
-                {expenses.length}
+                {filteredExpenses.length}
               </Typography>
             </CardContent>
           </Card>
@@ -173,7 +267,7 @@ const Expenses = () => {
                 Pending
               </Typography>
               <Typography variant="h4" color="warning.main">
-                {expenses.filter(e => e.status === 'pending').length}
+                {filteredExpenses.filter(e => e.status === 'submitted').length}
               </Typography>
             </CardContent>
           </Card>
@@ -186,7 +280,7 @@ const Expenses = () => {
                 Approved
               </Typography>
               <Typography variant="h4" color="success.main">
-                {expenses.filter(e => e.status === 'approved').length}
+                {filteredExpenses.filter(e => e.status === 'approved').length}
               </Typography>
             </CardContent>
           </Card>
@@ -199,7 +293,7 @@ const Expenses = () => {
                 Total Amount
               </Typography>
               <Typography variant="h4">
-                ${expenses.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}
+                ${filteredExpenses.reduce((sum, e) => sum + (e.amount || 0), 0).toFixed(2)}
               </Typography>
             </CardContent>
           </Card>
@@ -221,57 +315,94 @@ const Expenses = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {expenses.map((expense) => (
-                  <TableRow key={expense.id}>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight="medium">
-                        {expense.description}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={getCategoryLabel(expense.category)}
-                        size="small"
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight="medium">
-                        ${expense.amount.toFixed(2)} {expense.currency}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(expense.date).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={expense.status}
-                        color={getStatusColor(expense.status)}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {expense.receipt ? (
-                        <ReceiptIcon color="success" />
-                      ) : (
-                        <ReceiptIcon color="disabled" />
-                      )}
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        onClick={(e) => handleMenuOpen(e, expense)}
-                        size="small"
-                      >
-                        <MoreVertIcon />
-                      </IconButton>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      <CircularProgress />
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : filteredExpenses.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center">
+                      <Typography color="textSecondary">
+                        {searchTerm || filterStatus ? 'No expenses match your filters' : 'No expenses found. Create your first expense!'}
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredExpenses.map((expense) => (
+                    <TableRow key={expense._id}>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="medium">
+                          {expense.description}
+                        </Typography>
+                        {expense.merchant && (
+                          <Typography variant="caption" color="textSecondary">
+                            {expense.merchant}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={getCategoryLabel(expense.category)}
+                          size="small"
+                          variant="outlined"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="medium">
+                          {expense.currency.symbol}{expense.amount?.toFixed(2)} {expense.currency.code}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(expense.date).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={expense.status}
+                          color={getStatusColor(expense.status)}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {expense.receipt && expense.receipt.url ? (
+                          <ReceiptIcon color="success" />
+                        ) : expense.receipt && expense.receipt.pendingOCRData ? (
+                          <ReceiptIcon color="warning" />
+                        ) : (
+                          <ReceiptIcon color="disabled" />
+                        )}
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          onClick={(e) => handleMenuOpen(e, expense)}
+                          size="small"
+                        >
+                          <MoreVertIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </TableContainer>
         </Grid>
       </Grid>
+
+      {/* Debug Panel - Temporary for testing */}
+      {process.env.NODE_ENV === 'development' && (
+        <Box sx={{ mt: 2, p: 2, backgroundColor: '#f5f5f5', borderRadius: 1 }}>
+          <Typography variant="h6">Debug Info</Typography>
+          <Typography variant="body2">Total expenses: {expenses.length}</Typography>
+          <Typography variant="body2">Filtered expenses: {filteredExpenses.length}</Typography>
+          <Typography variant="body2">Loading: {loading ? 'Yes' : 'No'}</Typography>
+          <Typography variant="body2">Error: {error || 'None'}</Typography>
+          <Button onClick={loadExpenses} variant="outlined" size="small" sx={{ mt: 1 }}>
+            Manual Refresh
+          </Button>
+        </Box>
+      )}
 
       {/* Floating Action Button */}
       <Fab
@@ -306,6 +437,12 @@ const Expenses = () => {
           Delete
         </MenuItem>
       </Menu>
+
+      {/* Receipt Upload Dialog */}
+      <ReceiptUpload 
+        open={receiptUploadOpen}
+        onClose={() => setReceiptUploadOpen(false)}
+      />
     </Box>
   );
 };

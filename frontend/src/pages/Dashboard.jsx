@@ -52,46 +52,22 @@ const Dashboard = () => {
     try {
       setLoading(true);
       
-      // Load expenses
-      const expensesResponse = await axios.get('/api/expenses');
+      // Load dashboard data with server-side role filtering
+      const dashboardResponse = await axios.get('/api/expenses/dashboard');
       
-      let safeExpenses = [];
-      if (expensesResponse.data && Array.isArray(expensesResponse.data.expenses)) {
-        safeExpenses = expensesResponse.data.expenses;
+      if (dashboardResponse.data) {
+        // Use server-provided stats (already filtered by role)
+        setStats(dashboardResponse.data.stats);
+        setRecentExpenses(dashboardResponse.data.recentExpenses || []);
       } else {
-        console.warn('Unexpected API response format:', expensesResponse.data);
+        console.warn('Unexpected dashboard API response format:', dashboardResponse.data);
+        setError('Invalid dashboard data format');
       }
-      
-      // Calculate stats
-      const totalExpenses = safeExpenses.length;
-      const pendingExpenses = safeExpenses.filter(e => e.status === 'submitted').length;
-      const approvedExpenses = safeExpenses.filter(e => e.status === 'approved').length;
-      const rejectedExpenses = safeExpenses.filter(e => e.status === 'rejected').length;
-      
-      const totalAmount = safeExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
-      const pendingAmount = safeExpenses
-        .filter(e => e.status === 'submitted')
-        .reduce((sum, expense) => sum + (expense.amount || 0), 0);
-      const approvedAmount = safeExpenses
-        .filter(e => e.status === 'approved')
-        .reduce((sum, expense) => sum + (expense.amount || 0), 0);
-
-      setStats({
-        totalExpenses,
-        pendingExpenses,
-        approvedExpenses,
-        rejectedExpenses,
-        totalAmount,
-        pendingAmount,
-        approvedAmount
-      });
-
-      // Get recent expenses
-      setRecentExpenses(safeExpenses.slice(0, 5));
       
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
-      setError('Failed to load dashboard data');
+      const errorMessage = error.response?.data?.message || 'Failed to load dashboard data';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -286,6 +262,17 @@ const Dashboard = () => {
               sx={{ py: 1.5 }}
             >
               Add Expense
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              variant="outlined"
+              startIcon={<ReceiptIcon />}
+              href="/expenses"
+              fullWidth
+              sx={{ py: 1.5 }}
+            >
+              Smart Upload
             </Button>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>

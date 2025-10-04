@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import axios from 'axios';
+import { toast } from 'react-toastify';
 import {
   Box,
   Button,
@@ -32,6 +34,7 @@ const ExpenseForm = () => {
     category: '',
     description: '',
     date: new Date().toISOString().split('T')[0],
+    merchant: '',
     tags: []
   });
 
@@ -57,6 +60,13 @@ const ExpenseForm = () => {
     { value: 'CAD', label: 'Canadian Dollar (CAD)' }
   ];
 
+  const currencyDetails = {
+    USD: { code: 'USD', symbol: '$', name: 'US Dollar' },
+    EUR: { code: 'EUR', symbol: '€', name: 'Euro' },
+    GBP: { code: 'GBP', symbol: '£', name: 'British Pound' },
+    CAD: { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' }
+  };
+
   const handleInputChange = (field, value) => {
     setFormData(prev => ({
       ...prev,
@@ -75,20 +85,48 @@ const ExpenseForm = () => {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     // Validate form
     if (!formData.amount || !formData.category || !formData.description) {
-      alert('Please fill in all required fields');
+      toast.error('Please fill in all required fields');
       return;
     }
 
-    // Submit expense
-    console.log('Submitting expense:', formData);
-    
-    // In real app, this would make API call
-    navigate('/expenses');
+    try {
+      // Submit expense to API
+      console.log('Submitting expense:', formData);
+      
+      const expenseData = {
+        amount: parseFloat(formData.amount),
+        currency: currencyDetails[formData.currency] || currencyDetails['USD'],
+        category: formData.category,
+        description: formData.description,
+        date: formData.date,
+        merchant: formData.merchant || '',
+        tags: []
+      };
+
+      console.log('💸 Processed expense data:', expenseData);
+      await axios.post('/api/expenses', expenseData);
+      
+      toast.success('Expense created successfully!');
+      navigate('/expenses');
+    } catch (error) {
+      console.error('Failed to create expense:', error);
+      console.error('Error response:', error.response?.data);
+      
+      if (error.response?.data?.errors) {
+        // Show validation errors
+        const validationErrors = error.response.data.errors.map(err => err.msg).join(', ');
+        toast.error(`Validation Error: ${validationErrors}`);
+      } else {
+        // Show general error
+        const errorMessage = error.response?.data?.message || 'Failed to create expense';
+        toast.error(errorMessage);
+      }
+    }
   };
 
   return (
@@ -165,7 +203,17 @@ const ExpenseForm = () => {
                     />
                   </Grid>
 
-                  <Grid item xs={12}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Merchant"
+                      value={formData.merchant}
+                      onChange={(e) => handleInputChange('merchant', e.target.value)}
+                      placeholder="e.g., Restaurant Name, Store, etc."
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Description"
