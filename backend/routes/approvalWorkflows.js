@@ -87,16 +87,57 @@ router.post('/',
         ...conditionalRules.flatMap(rule => rule.specificApprovers || [])
       ];
 
-      if (allApproverIds.length > 0) {
+      // Remove duplicates but keep unique IDs
+      const uniqueApproverIds = [...new Set(allApproverIds)];
+
+      console.log('🔍 Validating approvers:', {
+        totalApproverIds: allApproverIds.length,
+        uniqueApproverIds: uniqueApproverIds.length,
+        approverIds: allApproverIds,
+        uniqueIds: uniqueApproverIds,
+        companyId: req.user.company._id
+      });
+
+      if (uniqueApproverIds.length > 0) {
         const approvers = await User.find({
-          _id: { $in: allApproverIds },
+          _id: { $in: uniqueApproverIds },
           company: req.user.company._id,
           isActive: true
         });
 
-        if (approvers.length !== allApproverIds.length) {
+        console.log('🔍 Found approvers:', {
+          requested: uniqueApproverIds.length,
+          found: approvers.length,
+          foundIds: approvers.map(a => a._id.toString()),
+          foundUsers: approvers.map(a => `${a.firstName} ${a.lastName} (${a.role})`)
+        });
+
+        if (approvers.length !== uniqueApproverIds.length) {
+          const missingIds = uniqueApproverIds.filter(id => 
+            !approvers.some(app => app._id.toString() === id)
+          );
+          
+          console.log('❌ Missing approvers:', missingIds);
+          
+          // Get all available approvers for debugging
+          const allAvailableApprovers = await User.find({
+             company: req.user.company._id,
+             isActive: true,
+             role: { $in: ['manager', 'admin'] }
+           }).select('firstName lastName email role');
+          
           return res.status(400).json({ 
-            message: 'Some approvers not found or inactive' 
+            message: 'Some approvers not found or inactive',
+            details: {
+              requested: uniqueApproverIds.length,
+              found: approvers.length,
+              missing: missingIds,
+              availableApprovers: allAvailableApprovers.map(a => ({
+                id: a._id.toString(),
+                name: `${a.firstName} ${a.lastName}`,
+                role: a.role
+              }))
+            }
           });
         }
       }
@@ -179,16 +220,58 @@ router.put('/:id',
           ...(conditionalRules || []).flatMap(rule => rule.specificApprovers || [])
         ];
 
-        if (allApproverIds.length > 0) {
+        // Remove duplicates but keep unique IDs
+        const uniqueApproverIds = [...new Set(allApproverIds)];
+
+        console.log('🔍 Updating workflow - Validating approvers:', {
+          totalApproverIds: allApproverIds.length,
+          uniqueApproverIds: uniqueApproverIds.length,
+          approverIds: allApproverIds,
+          uniqueIds: uniqueApproverIds,
+          companyId: req.user.company._id,
+          workflowId: req.params.id
+        });
+
+        if (uniqueApproverIds.length > 0) {
           const approvers = await User.find({
-            _id: { $in: allApproverIds },
+            _id: { $in: uniqueApproverIds },
             company: req.user.company._id,
             isActive: true
           });
 
-          if (approvers.length !== allApproverIds.length) {
+          console.log('🔍 Found approvers for update:', {
+            requested: uniqueApproverIds.length,
+            found: approvers.length,
+            foundIds: approvers.map(a => a._id.toString()),
+            foundUsers: approvers.map(a => `${a.firstName} ${a.lastName} (${a.role})`)
+          });
+
+          if (approvers.length !== uniqueApproverIds.length) {
+            const missingIds = uniqueApproverIds.filter(id => 
+              !approvers.some(app => app._id.toString() === id)
+            );
+            
+            console.log('❌ Missing approvers for update:', missingIds);
+            
+            // Get all available approvers for debugging
+            const allAvailableApprovers = await User.find({
+               company: req.user.company._id,
+               isActive: true,
+               role: { $in: ['manager', 'admin'] }
+             }).select('firstName lastName email role');
+            
             return res.status(400).json({ 
-              message: 'Some approvers not found or inactive' 
+              message: 'Some approvers not found or inactive',
+              details: {
+                requested: uniqueApproverIds.length,
+                found: approvers.length,
+                missing: missingIds,
+                availableApprovers: allAvailableApprovers.map(a => ({
+                  id: a._id.toString(),
+                  name: `${a.firstName} ${a.lastName}`,
+                  role: a.role
+                }))
+              }
             });
           }
         }

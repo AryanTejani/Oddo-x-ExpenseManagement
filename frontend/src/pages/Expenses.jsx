@@ -39,7 +39,8 @@ import {
   Receipt as ReceiptIcon,
   CloudUpload as UploadIcon,
   AutoFixHigh as AutoFixHighIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  Check as CheckIcon
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
@@ -49,6 +50,7 @@ import { getStatusColor, getCategoryLabel, formatCurrency, formatDate } from '..
 
 const Expenses = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedExpense, setSelectedExpense] = useState(null);
 
@@ -80,6 +82,7 @@ const Expenses = () => {
   const loadExpenses = async () => {
     try {
       setLoading(true);
+      setError('');
       console.log('🔄 Loading expenses...');
       const response = await axios.get("/api/expenses");
       
@@ -87,7 +90,11 @@ const Expenses = () => {
       
       if (response.data && Array.isArray(response.data.expenses)) {
         console.log('📊 Expenses loaded:', response.data.expenses.length, 'items');
+        console.log('📊 Expense statuses:', response.data.expenses.map(e => ({ id: e._id, status: e.status, description: e.description })));
         setExpenses(response.data.expenses);
+      } else if (Array.isArray(response.data)) {
+        console.log('📊 Expenses loaded (direct array):', response.data.length, 'items');
+        setExpenses(response.data);
       } else {
         console.warn("⚠️ Unexpected API response format:", response.data);
         setExpenses([]);
@@ -151,6 +158,32 @@ const Expenses = () => {
     }
   };
 
+  const handleSubmit = async () => {
+    if (selectedExpense && selectedExpense.status === 'draft') {
+      try {
+        // Use the workflow that was selected when the expense was created
+        const response = await axios.post(
+          `/api/expenses/${selectedExpense._id}/submit`,
+          { workflowId: selectedExpense.selectedWorkflow || null },
+          {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          }
+        );
+
+        if (response.status === 200) {
+          toast.success('Expense submitted successfully!');
+          loadExpenses(); // Refresh the expenses list
+        }
+      } catch (error) {
+        console.error('Failed to submit expense:', error);
+        toast.error('Failed to submit expense');
+      }
+      handleMenuClose();
+    }
+  };
+
   const filteredExpenses = expenses.filter(expense => {
     const matchesSearch = !searchTerm || 
       expense.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -167,20 +200,24 @@ const Expenses = () => {
           My Expenses
         </Typography>
         <Box display="flex" gap={1}>
-          <Button
-            variant="outlined"
-            startIcon={<UploadIcon />}
-            onClick={() => setReceiptUploadOpen(true)}
-          >
-            Smart Upload
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => navigate('/expenses/new')}
-          >
-            New Expense
-          </Button>
+          {user?.role === 'employee' && (
+            <>
+              <Button
+                variant="outlined"
+                startIcon={<UploadIcon />}
+                onClick={() => setReceiptUploadOpen(true)}
+              >
+                Smart Upload
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => navigate('/expenses/new')}
+              >
+                New Expense
+              </Button>
+            </>
+          )}
         </Box>
       </Box>
 
@@ -217,6 +254,17 @@ const Expenses = () => {
                 <MenuItem value="rejected">Rejected</MenuItem>
               </Select>
             </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={4}>
+            <Button
+              variant="outlined"
+              onClick={loadExpenses}
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : null}
+              fullWidth
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
           </Grid>
         </Grid>
       </Paper>
@@ -293,13 +341,13 @@ const Expenses = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">
+                    <TableCell colSpan={7} align="center">
                       <CircularProgress />
                     </TableCell>
                   </TableRow>
                 ) : filteredExpenses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} align="center">
+                    <TableCell colSpan={7} align="center">
                       <Typography color="textSecondary">
                         {searchTerm || filterStatus ? 'No expenses match your filters' : 'No expenses found. Create your first expense!'}
                       </Typography>
@@ -380,19 +428,21 @@ const Expenses = () => {
         </Box>
       )}
 
-      {/* Floating Action Button */}
-      <Fab
-        color="primary"
-        aria-label="add"
-        sx={{
-          position: 'fixed',
-          bottom: 16,
-          right: 16,
-        }}
-        onClick={() => navigate('/expenses/new')}
-      >
-        <AddIcon />
-      </Fab>
+      {/* Floating Action Button - Only for employees */}
+      {user?.role === 'employee' && (
+        <Fab
+          color="primary"
+          aria-label="add"
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+          }}
+          onClick={() => navigate('/expenses/new')}
+        >
+          <AddIcon />
+        </Fab>
+      )}
 
       {/* Action Menu */}
       <Menu
@@ -404,14 +454,24 @@ const Expenses = () => {
           <ViewIcon sx={{ mr: 1 }} />
           View Details
         </MenuItem>
-        <MenuItem onClick={handleEdit}>
-          <EditIcon sx={{ mr: 1 }} />
-          Edit
-        </MenuItem>
-        <MenuItem onClick={handleDelete} sx={{ color: 'error.main' }}>
-          <DeleteIcon sx={{ mr: 1 }} />
-          Delete
-        </MenuItem>
+        {user?.role === 'employee' && selectedExpense?.employee?._id === user._id && (
+          <>
+            <MenuItem onClick={handleEdit}>
+              <EditIcon sx={{ mr: 1 }} />
+              Edit
+            </MenuItem>
+            {selectedExpense.status === 'draft' && (
+              <MenuItem onClick={handleSubmit} sx={{ color: 'success.main' }}>
+                <CheckIcon sx={{ mr: 1 }} />
+                Submit
+              </MenuItem>
+            )}
+            <MenuItem onClick={handleDelete} sx={{ color: 'error.main' }}>
+              <DeleteIcon sx={{ mr: 1 }} />
+              Delete
+            </MenuItem>
+          </>
+        )}
       </Menu>
 
       {/* Receipt Upload Dialog */}

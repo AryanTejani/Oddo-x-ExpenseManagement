@@ -207,6 +207,32 @@ const ApprovalWorkflows = () => {
     setWorkflowForm({ ...workflowForm, conditionalRules: updatedRules });
   };
 
+  const addWorkflowRule = () => {
+    const newRule = {
+      condition: 'amount_threshold',
+      value: 0,
+      approvers: [],
+      level: 1,
+      isRequired: true,
+      isManagerApprover: false
+    };
+    setWorkflowForm({
+      ...workflowForm,
+      rules: [...workflowForm.rules, newRule]
+    });
+  };
+
+  const updateWorkflowRule = (index, field, value) => {
+    const updatedRules = [...workflowForm.rules];
+    updatedRules[index] = { ...updatedRules[index], [field]: value };
+    setWorkflowForm({ ...workflowForm, rules: updatedRules });
+  };
+
+  const removeWorkflowRule = (index) => {
+    const updatedRules = workflowForm.rules.filter((_, i) => i !== index);
+    setWorkflowForm({ ...workflowForm, rules: updatedRules });
+  };
+
   if (user?.role !== 'admin') {
     return (
       <Box p={3}>
@@ -320,13 +346,125 @@ const ApprovalWorkflows = () => {
           </Box>
 
           <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
+            <Tab label="Rules" />
             <Tab label="Approval Sequence" />
             <Tab label="Conditional Rules" />
             <Tab label="Settings" />
           </Tabs>
 
-          {/* Approval Sequence Tab */}
+          {/* Rules Tab */}
           {tabValue === 0 && (
+            <Box mt={2}>
+              <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                <Typography variant="h6">Workflow Rules</Typography>
+                <Button startIcon={<AddIcon />} onClick={addWorkflowRule}>
+                  Add Rule
+                </Button>
+              </Box>
+
+              {workflowForm.rules.map((rule, index) => (
+                <Accordion key={index}>
+                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                    <Typography>
+                      {rule.condition === 'amount_threshold' ? `Amount >= $${rule.value}` :
+                       rule.condition === 'category' ? `Category: ${rule.value}` :
+                       rule.condition === 'department' ? `Department: ${rule.value}` :
+                       'Unnamed Rule'}
+                    </Typography>
+                  </AccordionSummary>
+                  <AccordionDetails>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={4}>
+                        <FormControl fullWidth>
+                          <InputLabel>Condition</InputLabel>
+                          <Select
+                            value={rule.condition}
+                            onChange={(e) => updateWorkflowRule(index, 'condition', e.target.value)}
+                          >
+                            <MenuItem value="amount_threshold">Amount Threshold</MenuItem>
+                            <MenuItem value="category">Category</MenuItem>
+                            <MenuItem value="department">Department</MenuItem>
+                            <MenuItem value="employee_level">Employee Level</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        {rule.condition === 'amount_threshold' ? (
+                          <TextField
+                            fullWidth
+                            label="Amount Threshold"
+                            type="number"
+                            value={rule.value}
+                            onChange={(e) => updateWorkflowRule(index, 'value', parseFloat(e.target.value))}
+                            inputProps={{ min: 0, step: 0.01 }}
+                          />
+                        ) : rule.condition === 'category' ? (
+                          <FormControl fullWidth>
+                            <InputLabel>Category</InputLabel>
+                            <Select
+                              value={rule.value}
+                              onChange={(e) => updateWorkflowRule(index, 'value', e.target.value)}
+                            >
+                              <MenuItem value="travel">Travel</MenuItem>
+                              <MenuItem value="meals">Meals</MenuItem>
+                              <MenuItem value="accommodation">Accommodation</MenuItem>
+                              <MenuItem value="transport">Transport</MenuItem>
+                              <MenuItem value="office_supplies">Office Supplies</MenuItem>
+                              <MenuItem value="entertainment">Entertainment</MenuItem>
+                              <MenuItem value="training">Training</MenuItem>
+                              <MenuItem value="communication">Communication</MenuItem>
+                              <MenuItem value="other">Other</MenuItem>
+                            </Select>
+                          </FormControl>
+                        ) : (
+                          <TextField
+                            fullWidth
+                            label="Value"
+                            value={rule.value}
+                            onChange={(e) => updateWorkflowRule(index, 'value', e.target.value)}
+                          />
+                        )}
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <FormControl fullWidth>
+                          <InputLabel>Approvers</InputLabel>
+                          <Select
+                            multiple
+                            value={rule.approvers}
+                            onChange={(e) => updateWorkflowRule(index, 'approvers', e.target.value)}
+                          >
+                            {availableApprovers.map((approver) => (
+                              <MenuItem key={approver._id} value={approver._id}>
+                                {approver.firstName} {approver.lastName} ({approver.role})
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Button 
+                          color="error" 
+                          onClick={() => removeWorkflowRule(index)}
+                          startIcon={<DeleteIcon />}
+                        >
+                          Remove Rule
+                        </Button>
+                      </Grid>
+                    </Grid>
+                  </AccordionDetails>
+                </Accordion>
+              ))}
+
+              {workflowForm.rules.length === 0 && (
+                <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
+                  No rules defined. Add rules to define when this workflow should apply.
+                </Typography>
+              )}
+            </Box>
+          )}
+
+          {/* Approval Sequence Tab */}
+          {tabValue === 1 && (
             <Box mt={2}>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="h6">Approval Sequence</Typography>
@@ -396,7 +534,7 @@ const ApprovalWorkflows = () => {
           )}
 
           {/* Conditional Rules Tab */}
-          {tabValue === 1 && (
+          {tabValue === 2 && (
             <Box mt={2}>
               <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                 <Typography variant="h6">Conditional Rules</Typography>
@@ -482,7 +620,7 @@ const ApprovalWorkflows = () => {
           )}
 
           {/* Settings Tab */}
-          {tabValue === 2 && (
+          {tabValue === 3 && (
             <Box mt={2}>
               <Typography variant="h6" mb={2}>Default Approvers</Typography>
               <FormControl fullWidth>

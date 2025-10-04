@@ -30,7 +30,10 @@ import ExpenseManagement from './pages/ExpenseManagement';
 import CurrencyConverter from './components/CurrencyConverter';
 import SystemTest from './pages/SystemTest';
 import ExpenseTest from './pages/ExpenseTest';
+import FeatureTest from './pages/FeatureTest';
+import DemoSetup from './pages/DemoSetup';
 import AuthCallback from './pages/AuthCallback';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Create theme
 const theme = createTheme({
@@ -78,7 +81,9 @@ function App() {
                   } />
                   <Route path="expenses" element={
                     <ProtectedRoute>
-                      <Expenses />
+                      <ErrorBoundary>
+                        <Expenses />
+                      </ErrorBoundary>
                     </ProtectedRoute>
                   } />
                   <Route path="expenses/new" element={
@@ -127,6 +132,16 @@ function App() {
                   <Route path="expense-test" element={
                     <ProtectedRoute>
                       <ExpenseTest />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="feature-test" element={
+                    <ProtectedRoute>
+                      <FeatureTest />
+                    </ProtectedRoute>
+                  } />
+                  <Route path="demo-setup" element={
+                    <ProtectedRoute>
+                      <DemoSetup />
                     </ProtectedRoute>
                   } />
                 </Route>

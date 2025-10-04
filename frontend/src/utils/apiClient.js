@@ -10,9 +10,7 @@ class ApiClient {
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
     
-    const defaultHeaders = {
-      'Content-Type': 'application/json',
-    };
+    const defaultHeaders = {};
 
     // Add auth token if available
     const token = localStorage.getItem('token');
@@ -78,11 +76,16 @@ class ApiClient {
   }
 
   async post(endpoint, data, options = {}) {
+    const isFormData = data instanceof FormData;
+    
     return this.request(endpoint, {
       ...options,
       method: 'POST',
-      body: data instanceof FormData ? data : JSON.stringify(data),
-      headers: data instanceof FormData ? {} : { 'Content-Type': 'application/json' },
+      body: isFormData ? data : JSON.stringify(data),
+      headers: {
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...options.headers,
+      },
     });
   }
 
@@ -91,6 +94,10 @@ class ApiClient {
       ...options,
       method: 'PUT',
       body: JSON.stringify(data),
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
     });
   }
 

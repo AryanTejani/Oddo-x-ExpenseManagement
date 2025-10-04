@@ -154,7 +154,7 @@ router.post('/',
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { amount, currency, category, description, date, merchant, tags } = req.body;
+      const { amount, currency, category, description, date, merchant, tags, workflowId } = req.body;
 
       const expense = new Expense({
         employee: req.user._id,
@@ -165,7 +165,8 @@ router.post('/',
         description,
         date: new Date(date),
         merchant: merchant || '',
-        tags: tags || []
+        tags: tags || [],
+        selectedWorkflow: workflowId || undefined
       });
 
       await expense.save();
@@ -327,6 +328,8 @@ router.put('/:expenseId',
 router.post('/:expenseId/submit', authenticateToken, requireRole('employee'), async (req, res) => {
   try {
     const { expenseId } = req.params;
+    const { workflowId } = req.body; // Accept workflow selection from frontend
+    
     const expense = await Expense.findOne({ 
       _id: expenseId, 
       employee: req.user._id,
@@ -341,9 +344,12 @@ router.post('/:expenseId/submit', authenticateToken, requireRole('employee'), as
       return res.status(400).json({ message: 'Expense already submitted' });
     }
 
-        // Set up approval chain using workflow service
-        const approvalChain = await approvalWorkflowService.setupApprovalChain(expense);
-        expense.approvalChain = approvalChain;
+    console.log('🔍 Submitting expense with workflow:', workflowId);
+
+    // Set up approval chain using selected workflow or auto-select
+    const approvalChain = await approvalWorkflowService.setupApprovalChain(expense, workflowId);
+    expense.approvalChain = approvalChain;
+    expense.selectedWorkflow = workflowId || undefined; // Store selected workflow
 
     expense.status = 'submitted';
     expense.submittedAt = new Date();
@@ -352,9 +358,15 @@ router.post('/:expenseId/submit', authenticateToken, requireRole('employee'), as
     // Send email notification to approvers
     if (approvalChain && approvalChain.length > 0) {
       try {
+        // Get the employee's manager for email notifications
+        const employee = await User.findById(expense.employee._id);
+        const manager = employee.manager ? await User.findById(employee.manager) : null;
+        
         const approvers = approvalChain.map(app => app.approver).filter(app => app);
-        if (approvers.length > 0) {
-          await emailService.sendExpenseSubmittedEmail(expense, expense.employee, approvers);
+        const allApprovers = manager ? [manager, ...approvers] : approvers;
+        
+        if (allApprovers.length > 0) {
+          await emailService.sendExpenseSubmittedEmail(expense, expense.employee, allApprovers);
           console.log('Expense submission notification sent');
         }
       } catch (emailError) {
@@ -469,27 +481,48 @@ router.post('/ocr-process',
   upload.single('receipt'),
   async (req, res) => {
     try {
+      console.log('🔍 OCR Processing request received');
+      console.log('📁 File info:', req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        mimetype: req.file.mimetype,
+        size: req.file.size
+      } : 'No file');
+
       if (!req.file) {
+        console.log('❌ No file uploaded');
         return res.status(400).json({ message: 'No file uploaded' });
       }
 
+      console.log('🔧 Processing receipt with OCR...');
       // Process receipt with OCR
       const ocrResult = await ocrService.processReceipt(req.file.buffer, req.file.mimetype);
       
+      console.log('📊 OCR Result:', ocrResult);
+      
       if (!ocrResult.success) {
+        console.log('❌ OCR processing failed:', ocrResult.error);
         return res.status(400).json({ 
           message: 'Failed to process receipt',
           error: ocrResult.error 
         });
       }
 
+      console.log('✅ OCR processing successful');
       res.json({
         success: true,
         data: ocrResult.data
       });
     } catch (error) {
-      console.error('OCR processing error:', error);
-      res.status(500).json({ message: 'Failed to process receipt' });
+      console.error('💥 OCR processing error:', error);
+      console.error('💥 Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      res.status(500).json({ 
+        message: 'Failed to process receipt',
+        error: error.message 
+      });
     }
   }
 );

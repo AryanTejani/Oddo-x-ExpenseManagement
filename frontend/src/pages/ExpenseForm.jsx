@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
 import { handleApiError, formatValidationErrors } from '../utils/errorHandler';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Box,
   Button,
@@ -27,6 +28,7 @@ import {
 const ExpenseForm = () => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user } = useAuth();
   const isEdit = Boolean(id);
 
   const [formData, setFormData] = useState({
@@ -36,11 +38,14 @@ const ExpenseForm = () => {
     description: '',
     date: new Date().toISOString().split('T')[0],
     merchant: '',
-    tags: []
+    tags: [],
+    workflowId: ''
   });
 
   const [receiptFile, setReceiptFile] = useState(null);
   const [receiptPreview, setReceiptPreview] = useState(null);
+  const [workflows, setWorkflows] = useState([]);
+  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
 
   const categories = [
     { value: 'travel', label: 'Travel' },
@@ -75,6 +80,30 @@ const ExpenseForm = () => {
     }));
   };
 
+  // Fetch available workflows for employee
+  useEffect(() => {
+    const fetchWorkflows = async () => {
+      if (user?.role === 'employee' && !isEdit) {
+        setLoadingWorkflows(true);
+        try {
+          const response = await axios.get('/api/approval-workflows', {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+          });
+          setWorkflows(response.data.workflows || []);
+        } catch (error) {
+          console.error('Failed to fetch workflows:', error);
+          toast.error('Failed to load approval workflows');
+        } finally {
+          setLoadingWorkflows(false);
+        }
+      }
+    };
+
+    fetchWorkflows();
+  }, [user, isEdit]);
+
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
     if (file) {
@@ -106,7 +135,8 @@ const ExpenseForm = () => {
         description: formData.description,
         date: formData.date,
         merchant: formData.merchant || '',
-        tags: []
+        tags: [],
+        workflowId: formData.workflowId || null
       };
 
       console.log('💸 Processed expense data:', expenseData);
@@ -195,6 +225,35 @@ const ExpenseForm = () => {
                       </Select>
                     </FormControl>
                   </Grid>
+
+                  {/* Workflow Selection - Only for employees creating new expenses */}
+                  {user?.role === 'employee' && !isEdit && (
+                    <Grid item xs={12} sm={6}>
+                      <FormControl fullWidth>
+                        <InputLabel>Approval Workflow</InputLabel>
+                        <Select
+                          value={formData.workflowId}
+                          onChange={(e) => handleInputChange('workflowId', e.target.value)}
+                          label="Approval Workflow"
+                          disabled={loadingWorkflows}
+                        >
+                          <MenuItem value="">
+                            <em>Automatically select</em>
+                          </MenuItem>
+                          {workflows.map((workflow) => (
+                            <MenuItem key={workflow._id} value={workflow._id}>
+                              {workflow.name}
+                              {workflow.description && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {workflow.description}
+                                </Typography>
+                              )}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  )}
 
                   <Grid item xs={12} sm={6}>
                     <TextField

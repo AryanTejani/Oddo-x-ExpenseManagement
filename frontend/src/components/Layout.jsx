@@ -119,6 +119,18 @@ const Layout = () => {
       icon: <SettingsIcon />,
       path: '/expense-test',
       roles: ['admin', 'manager', 'employee']
+    },
+    {
+      text: 'Feature Test',
+      icon: <SettingsIcon />,
+      path: '/feature-test',
+      roles: ['admin', 'manager', 'employee']
+    },
+    {
+      text: 'Demo Setup',
+      icon: <SettingsIcon />,
+      path: '/demo-setup',
+      roles: ['admin', 'manager', 'employee']
     }
   ];
 

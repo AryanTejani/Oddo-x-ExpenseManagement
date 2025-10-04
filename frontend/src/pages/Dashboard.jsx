@@ -253,17 +253,19 @@ const Dashboard = () => {
           Quick Actions
         </Typography>
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Button
-              variant="contained"
-              startIcon={<ReceiptIcon />}
-              href="/expense-management"
-              fullWidth
-              sx={{ py: 1.5 }}
-            >
-              Add Expense
-            </Button>
-          </Grid>
+          {user?.role === 'employee' && (
+            <Grid item xs={12} sm={6} md={3}>
+              <Button
+                variant="contained"
+                startIcon={<ReceiptIcon />}
+                href="/expense-management"
+                fullWidth
+                sx={{ py: 1.5 }}
+              >
+                Add Expense
+              </Button>
+            </Grid>
+          )}
           <Grid item xs={12} sm={6} md={3}>
             <Button
               variant="outlined"

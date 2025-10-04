@@ -125,14 +125,48 @@ router.post('/:expenseId/approve',
       expense.approvalChain[approvalIndex].actionDate = new Date();
 
       // Check if all required approvals are complete
-      const pendingApprovals = expense.approvalChain.filter(
+      const pendingRequiredApprovals = expense.approvalChain.filter(
         approval => approval.status === 'pending' && approval.isRequired
       );
 
-      if (pendingApprovals.length === 0) {
+      console.log('🔍 Approval progression check:', {
+        expenseId: expense._id,
+        totalApprovals: expense.approvalChain.length,
+        pendingRequired: pendingRequiredApprovals.length,
+        approvalChain: expense.approvalChain.map(a => ({
+          approver: a.approver.toString(),
+          level: a.level,
+          status: a.status,
+          isRequired: a.isRequired,
+          stepName: a.stepName
+        }))
+      });
+
+      if (pendingRequiredApprovals.length === 0) {
+        // All required approvals complete - mark as approved
         expense.status = 'approved';
         expense.approvedAt = new Date();
         expense.totalApprovedAmount = expense.amount;
+        console.log('✅ All approvals complete - expense approved');
+      } else {
+        // Still pending approvals - notify next approvers
+        console.log('⏳ Still pending approvals - notifying next approvers');
+        
+        // Send notification to next approvers
+        try {
+          const nextApprovers = await User.find({
+            _id: { $in: pendingRequiredApprovals.map(a => a.approver) },
+            isActive: true
+          });
+
+          const populatedExpense = await Expense.findById(expense._id)
+            .populate('employee', 'firstName lastName email');
+
+          await emailService.sendExpenseSubmittedEmail(populatedExpense, populatedExpense.employee, nextApprovers);
+          console.log('📧 Notified next approvers:', nextApprovers.map(a => `${a.firstName} ${a.lastName}`));
+        } catch (emailError) {
+          console.error('Failed to notify next approvers:', emailError);
+        }
       }
 
       await expense.save();
@@ -142,8 +176,15 @@ router.post('/:expenseId/approve',
         const populatedExpense = await Expense.findById(expense._id)
           .populate('employee', 'firstName lastName email');
         
-        await emailService.sendExpenseApprovedEmail(populatedExpense, req.user);
-        console.log('Expense approval notification sent');
+        // Only send "approved" email if expense is fully approved
+        if (expense.status === 'approved') {
+          await emailService.sendExpenseApprovedEmail(populatedExpense, req.user);
+          console.log('📧 Expense fully approved notification sent to employee');
+        } else {
+          // Send intermediate approval notification
+          await emailService.sendExpenseApprovedEmail(populatedExpense, req.user);
+          console.log('📧 Intermediate approval notification sent to employee');
+        }
       } catch (emailError) {
         console.error('Failed to send expense approval email:', emailError);
         // Don't fail the request if email fails

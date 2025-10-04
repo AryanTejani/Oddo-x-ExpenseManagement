@@ -313,8 +313,10 @@ const RoleSelection = () => {
                         }}
                       />
                     )}
-                    renderOption={(props, option) => (
-                      <Box component="li" {...props}>
+                    renderOption={(props, option) => {
+                      const { key, ...otherProps } = props;
+                      return (
+                        <Box component="li" key={key} {...otherProps}>
                         <Box>
                           <Typography variant="body1">{option.name}</Typography>
                           <Typography variant="caption" color="textSecondary">
@@ -322,7 +324,8 @@ const RoleSelection = () => {
                           </Typography>
                         </Box>
                       </Box>
-                    )}
+                      );
+                    }}
                   />
                 </Grid>
               )}

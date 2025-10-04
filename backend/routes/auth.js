@@ -77,6 +77,16 @@ router.get('/google/callback',
 );
 
 // Complete user registration with role
+// Test endpoint for debugging
+router.get('/test-env', (req, res) => {
+  res.json({
+    jwtSecret: process.env.JWT_SECRET ? 'Set' : 'Missing',
+    mongodbUri: process.env.MONGODB_URI ? 'Set' : 'Missing',
+    sessionSecret: process.env.SESSION_SECRET ? 'Set' : 'Missing',
+    nodeEnv: process.env.NODE_ENV || 'development'
+  });
+});
+
 router.post('/complete-registration', async (req, res) => {
   try {
     const { tempToken, role, companyId, companyName, country, currency } = req.body;
@@ -92,13 +102,38 @@ router.post('/complete-registration', async (req, res) => {
     let company;
     if (companyId) {
       // Join existing company
-      company = await Company.findById(companyId).populate('currency');
-      if (!company) {
-        return res.status(404).json({ message: 'Company not found' });
+      try {
+        console.log('🔧 Joining existing company:', companyId);
+        
+        // Validate ObjectId format
+        if (!companyId.match(/^[0-9a-fA-F]{24}$/)) {
+          console.log('❌ Invalid company ID format:', companyId);
+          return res.status(400).json({ message: 'Invalid company ID format' });
+        }
+        
+        company = await Company.findById(companyId).populate('currency');
+        if (!company) {
+          console.log('❌ Company not found:', companyId);
+          return res.status(404).json({ message: 'Company not found' });
+        }
+        console.log('✅ Company found:', company.name);
+      } catch (error) {
+        console.error('❌ Error finding company:', error);
+        return res.status(500).json({ 
+          message: 'Failed to find company',
+          error: error.message 
+        });
       }
     } else {
       // Create new company
       try {
+        console.log('🔧 Creating company with data:', {
+          name: companyName,
+          domain: email.split('@')[1],
+          country,
+          currency
+        });
+
         // Create the company with embedded currency data
         company = new Company({
           name: companyName,
@@ -112,6 +147,8 @@ router.post('/complete-registration', async (req, res) => {
           isActive: true
         });
         await company.save();
+        
+        console.log('✅ Company saved successfully:', company._id);
 
         // Also create a Currency document for reference
         let currencyDoc = await Currency.findOne({ code: currency.code });
@@ -141,19 +178,43 @@ router.post('/complete-registration', async (req, res) => {
     }
 
     // Create user
+    let user;
     try {
-      const user = new User({
+      console.log('🔧 Creating user with data:', {
+        googleId,
+        email,
+        firstName,
+        lastName,
+        company: company._id,
+        role: role || 'employee',
+        companyId: companyId ? 'joining existing' : 'creating new'
+      });
+
+      // Validate role
+      const validRoles = ['admin', 'manager', 'employee'];
+      const userRole = role || 'employee';
+      if (!validRoles.includes(userRole)) {
+        console.error('❌ Invalid role:', userRole);
+        return res.status(400).json({ 
+          message: 'Invalid role specified',
+          error: `Role must be one of: ${validRoles.join(', ')}` 
+        });
+      }
+
+      user = new User({
         googleId,
         email,
         firstName,
         lastName,
         profilePicture,
         company: company._id,
-        role: role || 'employee',
+        role: userRole,
         isActive: true
       });
 
+      console.log('🔧 User object created, saving...');
       await user.save();
+      console.log('✅ User saved successfully');
 
       // If this is the first user in the company, make them admin
       if (role === 'admin' || !companyId) {
@@ -169,30 +230,72 @@ router.post('/complete-registration', async (req, res) => {
       });
     } catch (error) {
       console.error('❌ User creation error:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        code: error.code,
+        keyPattern: error.keyPattern,
+        keyValue: error.keyValue
+      });
       return res.status(500).json({ 
         message: 'Failed to create user',
         error: error.message 
       });
     }
 
-    const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.json({
-      message: 'Registration completed successfully',
-      token,
-      user: {
-        id: user._id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        company: company
+    try {
+      // Check JWT_SECRET
+      if (!process.env.JWT_SECRET) {
+        console.error('❌ JWT_SECRET is not set in environment variables');
+        return res.status(500).json({ 
+          message: 'JWT_SECRET missing',
+          error: 'Server configuration error' 
+        });
       }
-    });
+
+      const token = jwt.sign(
+        { userId: user._id },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+      );
+
+      console.log('✅ Registration completed successfully for:', user.email);
+      console.log('🔑 Token created successfully');
+      
+      // Simplify response to avoid serialization issues
+      const response = {
+        message: 'Registration completed successfully',
+        token,
+        user: {
+          id: user._id.toString(),
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: user.role,
+          company: {
+            id: company._id.toString(),
+            name: company.name
+          }
+        }
+      };
+      
+      console.log('📤 Sending response:', { 
+        message: response.message,
+        hasToken: !!response.token,
+        userEmail: response.user.email 
+      });
+      
+      res.json(response);
+    } catch (error) {
+      console.error('❌ Error creating response:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      res.status(500).json({ 
+        message: 'Registration completed but failed to create response',
+        error: error.message 
+      });
+    }
   } catch (error) {
     console.error('Registration completion error:', error);
     res.status(500).json({ message: 'Registration failed', error: error.message });

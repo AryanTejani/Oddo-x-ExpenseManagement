@@ -31,6 +31,17 @@ app.use(limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Debug middleware for multipart requests
+app.use('/api/expenses/ocr-process', (req, res, next) => {
+  console.log('🔍 OCR Route Debug:', {
+    method: req.method,
+    contentType: req.get('content-type'),
+    hasBody: !!req.body,
+    bodyKeys: req.body ? Object.keys(req.body) : 'no body'
+  });
+  next();
+});
+
 // Session middleware
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-secret-key',

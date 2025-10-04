@@ -113,19 +113,49 @@ class ApprovalWorkflowService {
     }
   }
 
-  async setupApprovalChain(expense) {
+  async setupApprovalChain(expense, selectedWorkflowId = null) {
     try {
-      const workflow = await this.getWorkflowForExpense(expense);
+      let workflow;
+      
+      if (selectedWorkflowId) {
+        // Use the workflow explicitly selected by employee
+        console.log('🔍 Using selected workflow:', selectedWorkflowId);
+        workflow = await ApprovalWorkflow.findOne({
+          _id: selectedWorkflowId,
+          company: expense.company,
+          isActive: true
+        });
+        
+        if (!workflow) {
+          throw new Error('Selected workflow not found or inactive');
+        }
+      } else {
+        // Auto-select workflow based on expense criteria
+        workflow = await this.getWorkflowForExpense(expense);
+      }
+      
       if (!workflow) {
         throw new Error('No workflow found for expense');
       }
+
+      console.log('✅ Using workflow:', workflow.name, 'with steps:', workflow.approvalSequence?.length || 0);
+      console.log('🔍 Workflow details:', {
+        workflowId: workflow._id,
+        workflowName: workflow.name,
+        approvalSequence: workflow.approvalSequence,
+        rules: workflow.rules,
+        defaultApprovers: workflow.defaultApprovers
+      });
 
       const approvalChain = [];
 
       // Use approval sequence if available (Odoo-style multi-level)
       if (workflow.approvalSequence && workflow.approvalSequence.length > 0) {
+        console.log('🔄 Using approval sequence workflow');
         for (const sequenceStep of workflow.approvalSequence.sort((a, b) => a.step - b.step)) {
+          console.log(`📋 Processing step ${sequenceStep.step}: ${sequenceStep.name}`);
           const approvers = await this.getApproversForSequenceStep(sequenceStep, expense);
+          console.log(`👥 Found ${approvers.length} approvers for step ${sequenceStep.step}`);
           
           for (const approver of approvers) {
             approvalChain.push({
@@ -184,6 +214,14 @@ class ApprovalWorkflowService {
       // Sort by level
       approvalChain.sort((a, b) => a.level - b.level);
 
+      console.log('🔗 Final approval chain:', approvalChain.map(a => ({
+        approver: a.approver.toString(),
+        level: a.level,
+        stepName: a.stepName,
+        status: a.status,
+        isRequired: a.isRequired
+      })));
+
       return approvalChain;
     } catch (error) {
       console.error('Setup approval chain error:', error);
@@ -232,6 +270,10 @@ class ApprovalWorkflowService {
 
   async getApproversForSequenceStep(sequenceStep, expense) {
     try {
+      console.log(`🔍 Getting approvers for step ${sequenceStep.step}: ${sequenceStep.name}`);
+      console.log(`   isManagerApprover: ${sequenceStep.isManagerApprover}`);
+      console.log(`   specific approvers: ${sequenceStep.approvers?.length || 0}`);
+      
       const approvers = [];
 
       // Get specific approvers from sequence step
@@ -242,26 +284,45 @@ class ApprovalWorkflowService {
           isActive: true
         });
         approvers.push(...users);
+        console.log(`   Found ${users.length} specific approvers`);
       }
 
       // If this is a manager approver step, get the employee's manager
-      if (sequenceStep.isManagerApprover && expense.employee.manager) {
-        const manager = await User.findById(expense.employee.manager);
-        if (manager && manager.isActive) {
-          approvers.push(manager);
+      if (sequenceStep.isManagerApprover) {
+        console.log(`   Looking for employee's manager...`);
+        // Populate the employee to get manager information
+        const populatedExpense = await Expense.findById(expense._id)
+          .populate('employee', 'manager firstName lastName');
+        
+        console.log(`   Employee: ${populatedExpense.employee?.firstName} ${populatedExpense.employee?.lastName}`);
+        console.log(`   Employee manager ID: ${populatedExpense.employee?.manager}`);
+        
+        if (populatedExpense.employee && populatedExpense.employee.manager) {
+          const manager = await User.findById(populatedExpense.employee.manager);
+          if (manager && manager.isActive) {
+            approvers.push(manager);
+            console.log(`   Found manager: ${manager.firstName} ${manager.lastName}`);
+          } else {
+            console.log(`   Manager not found or inactive`);
+          }
+        } else {
+          console.log(`   Employee has no manager assigned`);
         }
       }
 
       // Add admin as fallback if no approvers found
       if (approvers.length === 0) {
+        console.log(`   No approvers found, using admin fallback`);
         const admins = await User.find({
           company: expense.company,
           role: 'admin',
           isActive: true
         });
         approvers.push(...admins);
+        console.log(`   Found ${admins.length} admin fallbacks`);
       }
 
+      console.log(`   Total approvers for step ${sequenceStep.step}: ${approvers.length}`);
       return approvers;
     } catch (error) {
       console.error('Get sequence step approvers error:', error);
