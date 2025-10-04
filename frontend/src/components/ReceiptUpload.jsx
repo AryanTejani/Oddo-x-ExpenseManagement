@@ -30,6 +30,7 @@ import {
   Close as CloseIcon
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
+import { api, apiClient } from '../utils/apiClient';
 
 const ReceiptUpload = ({ open, onClose }) => {
   const navigate = useNavigate();
@@ -90,19 +91,7 @@ const ReceiptUpload = ({ open, onClose }) => {
       const formData = new FormData();
       formData.append('receipt', file);
 
-      const response = await fetch('/api/expenses/ocr-process', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        throw new Error('OCR processing failed');
-      }
-
-      const result = await response.json();
+      const result = await apiClient.post('/api/expenses/ocr-process', formData);
       
       if (result.success) {
         setOcrData(result.data);
@@ -149,28 +138,18 @@ const ReceiptUpload = ({ open, onClose }) => {
         hasReceipt: true // Indicate this expense should have a receipt
       };
 
-      const response = await fetch('/api/expenses', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(expenseData)
+      const result = await api.expenses.ocrDraft({
+        ...expenseData,
+        ocrData: ocrData // Include OCR data for reference
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to create expense');
-      }
-
-      const result = await response.json();
       
       toast.success('Draft expense created successfully!');
       
       // Reset form and close dialog
       handleClose();
       
-      // Navigate to expense management to continue editing
-      navigate('/expense-management');
+      // Navigate to edit the newly created expense
+      navigate(`/expenses/${result.expense._id}/edit`);
       
     } catch (error) {
       console.error('Failed to create expense:', error);

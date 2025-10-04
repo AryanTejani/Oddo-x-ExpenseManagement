@@ -52,6 +52,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
+import { api } from '../utils/apiClient';
 
 const Approvals = () => {
   const { user } = useAuth();
@@ -75,16 +76,12 @@ const Approvals = () => {
   const fetchPendingApprovals = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/approvals/pending', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
-      setExpenses(data);
+      const expenses = await api.approvals.getPending();
+      setExpenses(expenses);
     } catch (error) {
       console.error('Failed to fetch pending approvals:', error);
       toast.error('Failed to load pending approvals');
+      setExpenses([]);
     } finally {
       setLoading(false);
     }
@@ -106,23 +103,17 @@ const Approvals = () => {
 
   const handleSubmitAction = async () => {
     try {
-      const response = await fetch(`/api/approvals/${selectedExpense._id}/${action}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify({ comments })
-      });
-
-      if (response.ok) {
-        toast.success(`Expense ${action}d successfully`);
-        setOpenDialog(false);
-        fetchPendingApprovals();
+      const data = action === 'reject' ? { reason: comments, comments } : { comments };
+      
+      if (action === 'approve') {
+        await api.approvals.approve(selectedExpense._id, data);
       } else {
-        const error = await response.json();
-        toast.error(error.message || `Failed to ${action} expense`);
+        await api.approvals.reject(selectedExpense._id, data);
       }
+      
+      toast.success(`Expense ${action}d successfully`);
+      setOpenDialog(false);
+      fetchPendingApprovals();
     } catch (error) {
       console.error(`Failed to ${action} expense:`, error);
       toast.error(`Failed to ${action} expense`);

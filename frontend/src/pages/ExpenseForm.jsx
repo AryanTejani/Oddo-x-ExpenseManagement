@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import axios from 'axios';
 import { toast } from 'react-toastify';
+import { handleApiError, formatValidationErrors } from '../utils/errorHandler';
 import {
   Box,
   Button,
@@ -114,17 +115,20 @@ const ExpenseForm = () => {
       toast.success('Expense created successfully!');
       navigate('/expenses');
     } catch (error) {
-      console.error('Failed to create expense:', error);
-      console.error('Error response:', error.response?.data);
+      const errorInfo = handleApiError(error, 'ExpenseForm');
       
-      if (error.response?.data?.errors) {
-        // Show validation errors
-        const validationErrors = error.response.data.errors.map(err => err.msg).join(', ');
+      if (errorInfo.details && errorInfo.details.length > 0) {
+        const validationErrors = formatValidationErrors(errorInfo.details);
         toast.error(`Validation Error: ${validationErrors}`);
       } else {
-        // Show general error
-        const errorMessage = error.response?.data?.message || 'Failed to create expense';
-        toast.error(errorMessage);
+        toast.error(errorInfo.message);
+      }
+      
+      // Handle special cases
+      if (errorInfo.action === 'redirect') {
+        setTimeout(() => {
+          navigate(errorInfo.redirectTo);
+        }, 2000);
       }
     }
   };

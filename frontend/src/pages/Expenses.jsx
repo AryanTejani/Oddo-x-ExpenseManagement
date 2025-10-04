@@ -45,6 +45,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 import ReceiptUpload from '../components/ReceiptUpload';
+import { getStatusColor, getCategoryLabel, formatCurrency, formatDate } from '../utils/expenseUtils';
 
 const Expenses = () => {
   const navigate = useNavigate();
@@ -117,31 +118,6 @@ const Expenses = () => {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'approved': return 'success';
-      case 'submitted': return 'warning';
-      case 'pending': return 'warning'; // Legacy support
-      case 'rejected': return 'error';
-      case 'draft': return 'default';
-      default: return 'default';
-    }
-  };
-
-  const getCategoryLabel = (category) => {
-    const labels = {
-      travel: 'Travel',
-      meals: 'Meals',
-      accommodation: 'Accommodation',
-      transport: 'Transport',
-      office_supplies: 'Office Supplies',
-      entertainment: 'Entertainment',
-      training: 'Training',
-      communication: 'Communication',
-      other: 'Other'
-    };
-    return labels[category] || category;
-  };
 
   const handleMenuOpen = (event, expense) => {
     setAnchorEl(event.currentTarget);
@@ -351,11 +327,11 @@ const Expenses = () => {
                       </TableCell>
                       <TableCell>
                         <Typography variant="body2" fontWeight="medium">
-                          {expense.currency.symbol}{expense.amount?.toFixed(2)} {expense.currency.code}
+                          {formatCurrency(expense.amount, expense.currency)}
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        {new Date(expense.date).toLocaleDateString()}
+                        {formatDate(expense.date)}
                       </TableCell>
                       <TableCell>
                         <Chip

@@ -43,6 +43,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
+import { api } from '../utils/apiClient';
 
 const ApprovalWorkflows = () => {
   const { user } = useAuth();
@@ -76,16 +77,12 @@ const ApprovalWorkflows = () => {
 
   const fetchWorkflows = async () => {
     try {
-      const response = await fetch('/api/approval-workflows', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
-      setWorkflows(data);
+      const workflows = await api.workflows.getAll();
+      setWorkflows(workflows);
     } catch (error) {
       console.error('Failed to fetch workflows:', error);
       toast.error('Failed to load approval workflows');
+      setWorkflows([]);
     } finally {
       setLoading(false);
     }
@@ -93,15 +90,11 @@ const ApprovalWorkflows = () => {
 
   const fetchAvailableApprovers = async () => {
     try {
-      const response = await fetch('/api/approval-workflows/approvers/available', {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
-      });
-      const data = await response.json();
-      setAvailableApprovers(data);
+      const approvers = await api.workflows.getAvailableApprovers();
+      setAvailableApprovers(approvers);
     } catch (error) {
       console.error('Failed to fetch approvers:', error);
+      setAvailableApprovers([]);
     }
   };
 
@@ -143,29 +136,16 @@ const ApprovalWorkflows = () => {
 
   const handleSaveWorkflow = async () => {
     try {
-      const url = editingWorkflow 
-        ? `/api/approval-workflows/${editingWorkflow._id}`
-        : '/api/approval-workflows';
-      
-      const method = editingWorkflow ? 'PUT' : 'POST';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
-        body: JSON.stringify(workflowForm)
-      });
-
-      if (response.ok) {
-        toast.success(editingWorkflow ? 'Workflow updated successfully' : 'Workflow created successfully');
-        setOpenDialog(false);
-        fetchWorkflows();
+      if (editingWorkflow) {
+        await api.workflows.update(editingWorkflow._id, workflowForm);
+        toast.success('Workflow updated successfully');
       } else {
-        const error = await response.json();
-        toast.error(error.message || 'Failed to save workflow');
+        await api.workflows.create(workflowForm);
+        toast.success('Workflow created successfully');
       }
+      
+      setOpenDialog(false);
+      fetchWorkflows();
     } catch (error) {
       console.error('Failed to save workflow:', error);
       toast.error('Failed to save workflow');
@@ -175,19 +155,9 @@ const ApprovalWorkflows = () => {
   const handleDeleteWorkflow = async (workflowId) => {
     if (window.confirm('Are you sure you want to delete this workflow?')) {
       try {
-        const response = await fetch(`/api/approval-workflows/${workflowId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        });
-
-        if (response.ok) {
-          toast.success('Workflow deleted successfully');
-          fetchWorkflows();
-        } else {
-          toast.error('Failed to delete workflow');
-        }
+        await api.workflows.delete(workflowId);
+        toast.success('Workflow deleted successfully');
+        fetchWorkflows();
       } catch (error) {
         console.error('Failed to delete workflow:', error);
         toast.error('Failed to delete workflow');
