@@ -54,6 +54,10 @@ const Expenses = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedExpense, setSelectedExpense] = useState(null);
 
+  // Debug user role
+  console.log('🔍 Expenses page - User:', user);
+  console.log('🔍 Expenses page - User role:', user?.role);
+
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -184,7 +188,7 @@ const Expenses = () => {
     }
   };
 
-  const filteredExpenses = expenses.filter(expense => {
+  const filteredExpenses = (expenses || []).filter(expense => {
     if (!expense) return false; // Add null check
     const matchesSearch = !searchTerm || 
       expense.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -201,6 +205,7 @@ const Expenses = () => {
           My Expenses
         </Typography>
         <Box display="flex" gap={1}>
+          {console.log('🔍 Button render check - user?.role === employee:', user?.role === 'employee')}
           {user?.role === 'employee' && (
             <>
               <Button
@@ -461,7 +466,7 @@ const Expenses = () => {
               <EditIcon sx={{ mr: 1 }} />
               Edit
             </MenuItem>
-            {selectedExpense.status === 'draft' && (
+            {selectedExpense && selectedExpense.status === 'draft' && (
               <MenuItem onClick={handleSubmit} sx={{ color: 'success.main' }}>
                 <CheckIcon sx={{ mr: 1 }} />
                 Submit

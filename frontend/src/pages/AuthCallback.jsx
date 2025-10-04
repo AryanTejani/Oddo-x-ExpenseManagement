@@ -24,12 +24,19 @@ const AuthCallback = () => {
 
         // If user data is provided, user already exists
         if (userData) {
-          console.log('✅ Existing user logged in, redirecting to dashboard');
+          console.log('✅ Existing user logged in, redirecting based on role');
           // Store token in localStorage and update context
           localStorage.setItem('token', token);
           setToken(token);
-          setUser(JSON.parse(userData));
-          navigate('/dashboard');
+          const user = JSON.parse(userData);
+          setUser(user);
+          
+          // Redirect based on role
+          if (user.role === 'employee') {
+            navigate('/expenses');
+          } else {
+            navigate('/dashboard');
+          }
           return;
         }
 

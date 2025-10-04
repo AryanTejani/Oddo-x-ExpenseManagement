@@ -64,7 +64,7 @@ const Layout = () => {
       text: 'Dashboard',
       icon: <DashboardIcon />,
       path: '/dashboard',
-      roles: ['admin', 'manager', 'employee']
+      roles: ['admin', 'manager']
     },
     {
       text: 'My Expenses',

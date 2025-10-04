@@ -73,9 +73,9 @@ function App() {
                 
                 {/* Protected Routes */}
                 <Route path="/" element={<Layout />}>
-                  <Route index element={<Navigate to="/dashboard" replace />} />
+                  <Route index element={<Navigate to="/expenses" replace />} />
                   <Route path="dashboard" element={
-                    <ProtectedRoute>
+                    <ProtectedRoute allowedRoles={['manager', 'admin']}>
                       <Dashboard />
                     </ProtectedRoute>
                   } />
